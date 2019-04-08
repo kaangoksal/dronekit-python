@@ -532,6 +532,7 @@ class SystemStatus(object):
 
 class HasObservers(object):
     def __init__(self):
+        logging.basicConfig()
         self._logger = logging.getLogger(__name__)
 
         # A mapping from attr_name to a list of observers
@@ -1310,7 +1311,7 @@ class Vehicle(HasObservers):
                 c = 0
                 for i, v in enumerate(self._params_set):
                     if v is None:
-                        self._master.mav.param_request_read_send(0, 0, '', i)
+                        self._master.mav.param_request_read_send(0, 0, b'', i)
                         c += 1
                         if c > 50:
                             break
@@ -1775,7 +1776,7 @@ class Vehicle(HasObservers):
         # check that mode is not INITIALSING
         # check that we have a GPS fix
         # check that EKF pre-arm is complete
-        return self.mode != 'INITIALISING' and self.gps_0.fix_type > 1 and self._ekf_predposhorizabs
+        return self.mode != 'INITIALISING' and (self.gps_0.fix_type is not None and self.gps_0.fix_type > 1) and self._ekf_predposhorizabs
 
     @property
     def system_status(self):
@@ -2397,6 +2398,110 @@ class Vehicle(HasObservers):
 
         self.send_mavlink(reboot_msg)
 
+    def send_calibrate_gyro(self):
+        """Request gyroscope calibration."""
+
+        calibration_command = self.message_factory.command_long_encode(
+            self._handler.target_system, 0,  # target_system, target_component
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,  # command
+            0,  # confirmation
+            1,  # param 1, 1: gyro calibration, 3: gyro temperature calibration
+            0,  # param 2, 1: magnetometer calibration
+            0,  # param 3, 1: ground pressure calibration
+            0,  # param 4, 1: radio RC calibration, 2: RC trim calibration
+            0,  # param 5, 1: accelerometer calibration, 2: board level calibration, 3: accelerometer temperature calibration, 4: simple accelerometer calibration
+            0,  # param 6, 2: airspeed calibration
+            0,  # param 7, 1: ESC calibration, 3: barometer temperature calibration
+        )
+        self.send_mavlink(calibration_command)
+
+    def send_calibrate_magnetometer(self):
+        """Request magnetometer calibration."""
+
+        # ArduPilot requires the MAV_CMD_DO_START_MAG_CAL command, only present in the ardupilotmega.xml definition
+        if self._autopilot_type == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
+            calibration_command = self.message_factory.command_long_encode(
+                self._handler.target_system, 0,  # target_system, target_component
+                mavutil.mavlink.MAV_CMD_DO_START_MAG_CAL,  # command
+                0,  # confirmation
+                0,  # param 1, uint8_t bitmask of magnetometers (0 means all).
+                1,  # param 2, Automatically retry on failure (0=no retry, 1=retry).
+                1,  # param 3, Save without user input (0=require input, 1=autosave).
+                0,  # param 4, Delay (seconds).
+                0,  # param 5, Autoreboot (0=user reboot, 1=autoreboot).
+                0,  # param 6, Empty.
+                0,  # param 7, Empty.
+            )
+        else:
+            calibration_command = self.message_factory.command_long_encode(
+                self._handler.target_system, 0,  # target_system, target_component
+                mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,  # command
+                0,  # confirmation
+                0,  # param 1, 1: gyro calibration, 3: gyro temperature calibration
+                1,  # param 2, 1: magnetometer calibration
+                0,  # param 3, 1: ground pressure calibration
+                0,  # param 4, 1: radio RC calibration, 2: RC trim calibration
+                0,  # param 5, 1: accelerometer calibration, 2: board level calibration, 3: accelerometer temperature calibration, 4: simple accelerometer calibration
+                0,  # param 6, 2: airspeed calibration
+                0,  # param 7, 1: ESC calibration, 3: barometer temperature calibration
+            )
+
+        self.send_mavlink(calibration_command)
+
+    def send_calibrate_accelerometer(self, simple=False):
+        """Request accelerometer calibration.
+
+        :param simple: if True, perform simple accelerometer calibration
+        """
+
+        calibration_command = self.message_factory.command_long_encode(
+            self._handler.target_system, 0,  # target_system, target_component
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,  # command
+            0,  # confirmation
+            0,  # param 1, 1: gyro calibration, 3: gyro temperature calibration
+            0,  # param 2, 1: magnetometer calibration
+            0,  # param 3, 1: ground pressure calibration
+            0,  # param 4, 1: radio RC calibration, 2: RC trim calibration
+            4 if simple else 1,  # param 5, 1: accelerometer calibration, 2: board level calibration, 3: accelerometer temperature calibration, 4: simple accelerometer calibration
+            0,  # param 6, 2: airspeed calibration
+            0,  # param 7, 1: ESC calibration, 3: barometer temperature calibration
+        )
+        self.send_mavlink(calibration_command)
+
+    def send_calibrate_vehicle_level(self):
+        """Request vehicle level (accelerometer trim) calibration."""
+
+        calibration_command = self.message_factory.command_long_encode(
+            self._handler.target_system, 0,  # target_system, target_component
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,  # command
+            0,  # confirmation
+            0,  # param 1, 1: gyro calibration, 3: gyro temperature calibration
+            0,  # param 2, 1: magnetometer calibration
+            0,  # param 3, 1: ground pressure calibration
+            0,  # param 4, 1: radio RC calibration, 2: RC trim calibration
+            2,  # param 5, 1: accelerometer calibration, 2: board level calibration, 3: accelerometer temperature calibration, 4: simple accelerometer calibration
+            0,  # param 6, 2: airspeed calibration
+            0,  # param 7, 1: ESC calibration, 3: barometer temperature calibration
+        )
+        self.send_mavlink(calibration_command)
+
+    def send_calibrate_barometer(self):
+        """Request barometer calibration."""
+
+        calibration_command = self.message_factory.command_long_encode(
+            self._handler.target_system, 0,  # target_system, target_component
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_CALIBRATION,  # command
+            0,  # confirmation
+            0,  # param 1, 1: gyro calibration, 3: gyro temperature calibration
+            0,  # param 2, 1: magnetometer calibration
+            1,  # param 3, 1: ground pressure calibration
+            0,  # param 4, 1: radio RC calibration, 2: RC trim calibration
+            0,  # param 5, 1: accelerometer calibration, 2: board level calibration, 3: accelerometer temperature calibration, 4: simple accelerometer calibration
+            0,  # param 6, 2: airspeed calibration
+            0,  # param 7, 1: ESC calibration, 3: barometer temperature calibration
+        )
+        self.send_mavlink(calibration_command)
+
 
 class Gimbal(object):
     """
@@ -2435,6 +2540,13 @@ class Gimbal(object):
             self._pitch = m.pointing_a / 100.0
             self._roll = m.pointing_b / 100.0
             self._yaw = m.pointing_c / 100.0
+            vehicle.notify_attribute_listeners('gimbal', vehicle.gimbal)
+
+        @vehicle.on_message('MOUNT_ORIENTATION')
+        def listener(vehicle, name, m):
+            self._pitch = m.pitch 
+            self._roll = m.roll
+            self._yaw = m.yaw
             vehicle.notify_attribute_listeners('gimbal', vehicle.gimbal)
 
     @property
@@ -2897,19 +3009,24 @@ class CommandSequence(object):
         self._vehicle._wploader.add(cmd, comment='Added by DroneKit')
         self._vehicle._wpts_dirty = True
 
-    def upload(self):
+    def upload(self, timeout=None):
         """
         Call ``upload()`` after :py:func:`adding <CommandSequence.add>` or :py:func:`clearing <CommandSequence.clear>` mission commands.
 
         After the return from ``upload()`` any writes are guaranteed to have completed (or thrown an
         exception) and future reads will see their effects.
+
+        :param int timeout: The timeout for uploading the mission. No timeout if not provided or set to None.
         """
         if self._vehicle._wpts_dirty:
             self._vehicle._master.waypoint_clear_all_send()
+            start_time = time.time()
             if self._vehicle._wploader.count() > 0:
                 self._vehicle._wp_uploaded = [False] * self._vehicle._wploader.count()
                 self._vehicle._master.waypoint_count_send(self._vehicle._wploader.count())
                 while False in self._vehicle._wp_uploaded:
+                    if timeout and time.time() - start_time > timeout:
+                        raise TimeoutError
                     time.sleep(0.1)
                 self._vehicle._wp_uploaded = None
             self._vehicle._wpts_dirty = False
@@ -2977,6 +3094,7 @@ def connect(ip,
             baud=115200,
             heartbeat_timeout=30,
             source_system=255,
+            source_component=0,
             use_native=False):
     """
     Returns a :py:class:`Vehicle` object connected to the address specified by string parameter ``ip``.
@@ -3013,6 +3131,7 @@ def connect(ip,
     :param int heartbeat_timeout: Connection timeout value in seconds (default is 30s).
         If a heartbeat is not detected within this time an exception will be raised.
     :param int source_system: The MAVLink ID of the :py:class:`Vehicle` object returned by this method (by default 255).
+    :param int source_component: The MAVLink Component ID fo the :py:class:`Vehicle` object returned by this method (by default 0).
     :param bool use_native: Use precompiled MAVLink parser.
 
         .. note::
@@ -3037,7 +3156,7 @@ def connect(ip,
     if not vehicle_class:
         vehicle_class = Vehicle
 
-    handler = MAVConnection(ip, baud=baud, source_system=source_system, use_native=use_native)
+    handler = MAVConnection(ip, baud=baud, source_system=source_system, source_component=source_component, use_native=use_native)
     vehicle = vehicle_class(handler)
 
     if status_printer:
